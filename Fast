@@ -12,7 +12,7 @@ local Options = Find(({...})) or {
 
 	Experiments = { },
 
-	Tempo = 0.6,  -- Delay modificado para 0.7 segundos
+	Tempo = 0.8,  -- Delay modificado para 0.7 segundos
 	Rainbow = false,
 
 }
