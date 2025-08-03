@@ -178,64 +178,86 @@ Notification:SetParent(UI.getUI())
 Notification:SetLang(UILang.Notification)
 Extenso:SetLang(WordsLang)
 
--- ADICIONA A BOX PARA DELAY
+-- ADICIONA A BOX PARA DELAY ABAIXO DO BOTÃO "ATÉ O" COM O MESMO DESIGN E DRAG
 if not UIElements["Box"]["Delay"] then
-	UIElements["Box"]["Delay"] = Instance.new("TextBox")
-	UIElements["Box"]["Delay"].Name = "Delay"
-	UIElements["Box"]["Delay"].PlaceholderText = "Tempo (seg)"
-	UIElements["Box"]["Delay"].Size = UDim2.new(0, 100, 0, 30)
-	UIElements["Box"]["Delay"].Position = UDim2.new(0, 10, 0, 140) -- posição inicial
-	UIElements["Box"]["Delay"].Text = tostring(Options.Tempo)
-	UIElements["Box"]["Delay"].Parent = UI.getUI()
+	local EndBox = UIElements.Box["End"] -- botão "Até o"
+
+	-- Criar TextBox Delay com o mesmo estilo
+	local DelayBox = Instance.new("TextBox")
+	DelayBox.Name = "Delay"
+	DelayBox.PlaceholderText = "Tempo (seg)"
+	DelayBox.Text = tostring(Options.Tempo)
+	DelayBox.Size = EndBox.Size
+	DelayBox.Position = EndBox.Position + UDim2.new(0, 0, 0, EndBox.Size.Y.Offset + 10)
+	DelayBox.BackgroundColor3 = EndBox.BackgroundColor3
+	DelayBox.BackgroundTransparency = EndBox.BackgroundTransparency
+	DelayBox.BorderSizePixel = EndBox.BorderSizePixel
+	DelayBox.TextColor3 = EndBox.TextColor3
+	DelayBox.Font = EndBox.Font
+	DelayBox.TextSize = EndBox.TextSize
+	DelayBox.TextStrokeTransparency = EndBox.TextStrokeTransparency
+	DelayBox.ClearTextOnFocus = false
+	DelayBox.TextScaled = false
+	DelayBox.ClipsDescendants = true
+	DelayBox.TextXAlignment = EndBox.TextXAlignment
+	DelayBox.TextYAlignment = EndBox.TextYAlignment
+	DelayBox.Parent = UI.getUI()
+
+	UIElements["Box"]["Delay"] = DelayBox
+
+	-- Escuta do valor digitado
+	table.insert(Connections, DelayBox.FocusLost:Connect(function()
+		local CurrentText = DelayBox.Text
+		if CurrentText and tonumber(CurrentText) then
+			Options.Tempo = tonumber(CurrentText)
+		end
+	end))
+
+	-- DRAG
+	local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+
+	local function update(input)
+		if dragging and input then
+			local delta = input.Position - dragStart
+			DelayBox.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end
+
+	DelayBox.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = DelayBox.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	DelayBox.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput then
+			update(input)
+		end
+	end)
 end
 
 for Name, Element in pairs(UIElements.Box) do
 	task.spawn(Listen, Name, Element)
 end
-
--- Código para permitir drag and drop do DelayBox
-local DelayBox = UIElements["Box"]["Delay"]
-
-local dragging = false
-local dragInput = nil
-local dragStart = nil
-local startPos = nil
-
-local function update(input)
-	if dragging and input then
-		local delta = input.Position - dragStart
-		DelayBox.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-	end
-end
-
-DelayBox.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = DelayBox.Position
-
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-
-DelayBox.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	update(input)
-end)
 
 table.insert(Connections, UIElements.Circle.MouseButton1Click:Connect(function()
 	if Toggled then
