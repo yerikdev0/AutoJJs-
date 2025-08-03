@@ -1,101 +1,152 @@
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-
-local UIElements = {
-	Box = {},
+-- ══════════════════════════════════════
+--               Core				
+-- ══════════════════════════════════════
+local Find = function(Table) for _, Item in pairs(Table or {}) do if typeof(Item) == "table" then return Item end; end; end
+local Options = Find(({...})) or {
+	Keybind = "Home",
+	Language = { UI = "pt-br", Words = "pt-br" },
+	Experiments = {},
+	Tempo = 2.5,
+	Rainbow = false,
 }
 
-local Window = Rayfield:CreateWindow({
-	Name = "AutoJJ",
-	LoadingTitle = "AutoJJ Loader",
-	LoadingSubtitle = "by Erik",
-	ConfigurationSaving = {
-		Enabled = false
-	},
-	Discord = {
-		Enabled = false,
-	},
-	KeySystem = false,
-})
+local Version = "2.1"
+local Parent = gethui() or game:GetService("CoreGui")
+local require = function(Name)
+	return loadstring(game:HttpGet(string.format("https://raw.githubusercontent.com/Zv-yz/AutoJJs/main/%s.lua", Name)))()
+end
 
-local Tab = Window:CreateTab("Configurar", 4483362458)
+-- ══════════════════════════════════════
+--              Services				
+-- ══════════════════════════════════════
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
 
--- Input: Começar do
-UIElements.Box["Start"] = Tab:CreateInput({
-	Name = "Começar do:",
-	PlaceholderText = "Ex: 0",
-	RemoveTextAfterFocusLost = false,
-	Numeric = true,
-	Callback = function(Value)
-		-- Salva no script principal via Settings.Config["Start"]
+-- ══════════════════════════════════════
+--              Modules				
+-- ══════════════════════════════════════
+local UI = require("UI")
+local Notification = require("Notification")
+
+local Extenso = require("Modules/Extenso")
+local Character = require("Modules/Character")
+local RemoteChat = require("Modules/RemoteChat")
+local Request = require("Modules/Request")
+
+-- ══════════════════════════════════════
+--  	        Constants				
+-- ══════════════════════════════════════
+local Char = Character.new(LP)
+local UIElements = UI.UIElements
+local Connections = {}
+
+local Threading
+local FinishedThread = false
+local Toggled = false
+
+local Settings = {
+	Keybind = Options.Keybind or "Home",
+	Started = false,
+	Jump = false,
+	Config = {
+		Start = nil,
+		End = nil,
+		Prefix = nil,
+	}
+}
+
+-- ══════════════════════════════════════
+--              Methods				
+-- ══════════════════════════════════════
+local Methods = {
+	["Normal"] = function(Message, Prefix)
+		if Settings.Jump then Char:Jump() end
+		RemoteChat:Send(Message .. Prefix)
 	end,
-})
 
--- Input: Até o
-UIElements.Box["End"] = Tab:CreateInput({
-	Name = "Até o:",
-	PlaceholderText = "Ex: 20",
-	RemoveTextAfterFocusLost = false,
-	Numeric = true,
-	Callback = function(Value)
-		-- Salva no script principal via Settings.Config["End"]
+	["Lowercase"] = function(Message, Prefix)
+		if Settings.Jump then Char:Jump() end
+		RemoteChat:Send(string.lower(Message) .. Prefix)
 	end,
-})
 
--- Input: Final do Prefix
-UIElements.Box["Prefix"] = Tab:CreateInput({
-	Name = "Final do Prefix:",
-	PlaceholderText = "Ex: !",
-	RemoveTextAfterFocusLost = false,
-	Callback = function(Value)
-		-- Salva no script principal via Settings.Config["Prefix"]
-	end,
-})
-
--- Input: Tempo entre mensagens (delay)
-UIElements.Box["Delay"] = Tab:CreateInput({
-	Name = "Tempo entre mensagens (s):",
-	PlaceholderText = "Ex: 2.5",
-	RemoveTextAfterFocusLost = false,
-	Numeric = true,
-	Callback = function(Value)
-		getgenv().TempDelay = tonumber(Value)
-	end,
-})
-
--- Botão: Aplicar Tempo
-UIElements.Box["ApplyDelay"] = Tab:CreateButton({
-	Name = "Aplicar Tempo",
-	Callback = function()
-		local delay = tonumber(getgenv().TempDelay)
-		if delay then
-			getgenv().Options = getgenv().Options or {}
-			getgenv().Options.Tempo = delay
-			Rayfield:Notify({
-				Title = "Tempo Atualizado",
-				Content = "Novo tempo: " .. tostring(delay) .. " segundos",
-				Duration = 3,
-			})
-		else
-			Rayfield:Notify({
-				Title = "Erro",
-				Content = "Digite um valor válido no campo de tempo.",
-				Duration = 3,
-			})
+	["HJ"] = function(Message, Prefix)
+		for i = 1, #Message do
+			if Settings.Jump then Char:Jump() end
+			RemoteChat:Send(string.sub(Message, i, i) .. Prefix)
+			task.wait(Options.Tempo)
 		end
+		if Settings.Jump then Char:Jump() end
+		RemoteChat:Send(Message .. Prefix)
 	end,
-})
+}
 
--- Retorna os elementos criados
-return {
-	UIElements = UIElements,
-	SetVersion = function(Version) end,
-	SetLanguage = function() end,
-	SetRainbow = function() end,
-	SetParent = function() end,
-	getUI = function()
-		return game:GetService("CoreGui")
-	end,
-}local function GetLanguage(Lang)
+-- ══════════════════════════════════════
+--              Functions				
+-- ══════════════════════════════════════
+local function Listen(Name, Element)
+	if Element:GetAttribute("IntBox") then
+		table.insert(Connections, Element:GetPropertyChangedSignal("Text"):Connect(function()
+			Element.Text = string.gsub(Element.Text, "[^%d]", "")
+		end))
+	end
+
+	table.insert(Connections, Element.FocusLost:Connect(function()
+		local CurrentText = Element.Text
+		if not CurrentText or string.match(CurrentText, "^%s*$") then return end
+
+		if Name == "Delay" then
+			local delay = tonumber(CurrentText)
+			if delay then Options.Tempo = delay end
+		else
+			Settings.Config[Name] = CurrentText
+		end
+	end))
+end
+
+local function EndThread(Success)
+	if Threading then
+		if not FinishedThread then task.cancel(Threading) end
+		Threading = nil
+		FinishedThread = false
+		Settings.Started = false
+		Notification:Notify(Success and 6 or 12)
+	end
+end
+
+local function DoJJ(MethodName, Number, Prefix)
+	local Success, String = Extenso:Convert(Number)
+	Prefix = Prefix or ""
+	local Method = Methods[MethodName]
+	if not Method then Notification:Notify(12) end
+	if Success then Method(String, Prefix) end
+end
+
+local function StartThread()
+	local Config = Settings.Config
+	if not Config.Start or not Config.End then return end
+	if Threading then EndThread(false) return end
+
+	local Method =
+		table.find(Options.Experiments, "hell_jacks_2024_02-dev") and "HJ" or
+		table.find(Options.Experiments, "lowercase_jjs_2024_12") and "Lowercase" or
+		"Normal"
+
+	Notification:Notify(5)
+	Threading = task.spawn(function()
+		for Amount = Config.Start, Config.End do
+			DoJJ(Method, Amount, Config.Prefix)
+			if Amount ~= tonumber(Config.End) then
+				task.wait(Options.Tempo)
+			end
+		end
+		FinishedThread = true
+		EndThread(true)
+	end)
+end
+
+local function GetLanguage(Lang)
 	local Success, Result = pcall(function()
 		return require(string.format("I18N/%s", Lang))
 	end)
@@ -133,7 +184,7 @@ if not UIElements["Box"]["Delay"] then
 	UIElements["Box"]["Delay"].Name = "Delay"
 	UIElements["Box"]["Delay"].PlaceholderText = "Tempo (seg)"
 	UIElements["Box"]["Delay"].Size = UDim2.new(0, 100, 0, 30)
-	UIElements["Box"]["Delay"].Position = UDim2.new(0, 10, 0, 140)
+	UIElements["Box"]["Delay"].Position = UDim2.new(0, 10, 0, 140) -- posição inicial
 	UIElements["Box"]["Delay"].Text = tostring(Options.Tempo)
 	UIElements["Box"]["Delay"].Parent = UI.getUI()
 end
@@ -141,6 +192,50 @@ end
 for Name, Element in pairs(UIElements.Box) do
 	task.spawn(Listen, Name, Element)
 end
+
+-- Código para permitir drag and drop do DelayBox
+local DelayBox = UIElements["Box"]["Delay"]
+
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+local function update(input)
+	if dragging and input then
+		local delta = input.Position - dragStart
+		DelayBox.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+end
+
+DelayBox.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = DelayBox.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+DelayBox.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	update(input)
+end)
 
 table.insert(Connections, UIElements.Circle.MouseButton1Click:Connect(function()
 	if Toggled then
